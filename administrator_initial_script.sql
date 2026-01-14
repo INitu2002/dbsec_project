@@ -1,0 +1,620 @@
+create table ferme(
+id_ferma number(3) constraint pk_ferme primary key,
+denumire varchar2(50) not null,
+judet varchar2(15) not null,
+localitate varchar2(30) not null,
+data_infiintare date,
+constraint uq_ferme_denumire unique(denumire)
+);
+
+insert into ferme values(1,'ferma sud','ialomita','slobozia',to_date('15.03.2012','dd.mm.yyyy'));
+insert into ferme values(2,'ferma nord','arges','maracineni',to_date('10.04.2015','dd.mm.yyyy'));
+insert into ferme values(3,'ferma ilfov','ilfov','dobroesti',to_date('01.06.2018','dd.mm.yyyy'));
+
+create table parcele(
+id_parcela number(4) constraint pk_parcele primary key,
+id_ferma number(3) not null,
+denumire varchar2(30) not null,
+suprafata_ha number(6,2) not null,
+judet varchar2(15) not null,
+localitate varchar2(30) not null,
+constraint ck_suprafata check(suprafata_ha>0 and suprafata_ha<=500),
+constraint fk_parcele_ferme foreign key(id_ferma) references ferme(id_ferma),
+constraint uq_parcela unique(id_ferma,denumire)
+);
+
+insert into parcele values(1001,1,'p1-slobozia',35.5,'ialomita','slobozia');
+insert into parcele values(1002,1,'p2-ograda',22,'ialomita','ograda');
+insert into parcele values(2001,2,'p1-maracineni',18.75,'arges','maracineni');
+insert into parcele values(2002,2,'p2-recea',27.1,'arges','recea');
+insert into parcele values(3001,3,'p1-dobroesti',12.4,'ilfov','dobroesti');
+insert into parcele values(3002,3,'p2-gruiu',15,'ilfov','gruiu');
+
+create table recolte(
+id_recolta number(3) constraint pk_recolte primary key,
+denumire_recolta varchar2(50) not null,
+categorie_recolta varchar2(20) constraint ck_categorie_recolta check(categorie_recolta in('cereale','fructe','legume','plante oleaginoase')),
+tip_ingrasamant varchar2(30),
+pret_kg number(6,2) not null
+);
+
+insert into recolte values(11,'porumb','cereale','ingrasamant cu azot ureic',1);
+insert into recolte values(32,'mar','fructe','fertilizant universal',4);
+insert into recolte values(97,'grau','cereale','fertilizant cereale paioase',1.2);
+insert into recolte values(74,'cartof','legume','ingrasamant mineral',5);
+insert into recolte values(62,'floarea-soarelui','plante oleaginoase','fertilizant cu azot ureic',2);
+insert into recolte values(14,'ardei','legume','fertilizant universal',7);
+
+create table culturi(
+id_cultura number(5) constraint pk_culturi primary key,
+id_parcela number(4) not null,
+id_recolta number(3) not null,
+an_agricol number(4) not null,
+data_start date,
+data_sfarsit date,
+constraint ck_an check(an_agricol between 2015 and 2035),
+constraint ck_interval check(data_sfarsit is null or data_start is null or data_sfarsit>=data_start),
+constraint fk_culturi_parcele foreign key(id_parcela) references parcele(id_parcela),
+constraint fk_culturi_recolte foreign key(id_recolta) references recolte(id_recolta),
+constraint uq_cultura unique(id_parcela,an_agricol)
+);
+
+insert into culturi values(50001,1001,11,2024,to_date('10.03.2024','dd.mm.yyyy'),to_date('20.09.2024','dd.mm.yyyy'));
+insert into culturi values(50002,1002,97,2024,to_date('05.10.2023','dd.mm.yyyy'),to_date('10.07.2024','dd.mm.yyyy'));
+insert into culturi values(50003,2001,32,2024,to_date('15.03.2024','dd.mm.yyyy'),to_date('15.09.2024','dd.mm.yyyy'));
+insert into culturi values(50004,2002,74,2024,to_date('01.04.2024','dd.mm.yyyy'),to_date('30.09.2024','dd.mm.yyyy'));
+insert into culturi values(50005,3001,62,2024,to_date('20.03.2024','dd.mm.yyyy'),to_date('15.09.2024','dd.mm.yyyy'));
+insert into culturi values(50006,3002,14,2024,to_date('05.04.2024','dd.mm.yyyy'),to_date('25.08.2024','dd.mm.yyyy'));
+
+create sequence seq_culturi start with 6000 increment by 1 nocache;
+
+create or replace trigger trg_culturi_bi
+before insert on culturi
+for each row
+begin
+  if :new.id_cultura is null then
+    :new.id_cultura:=seq_culturi.nextval;
+  end if;
+end;
+/
+
+create table utilaje(
+id_utilaj number(3) constraint pk_utilaje primary key,
+denumire_utilaj varchar2(30) not null,
+tip_utilaj varchar2(30),
+munca_agricola varchar2(35),
+durata_utilizare number(2,1) constraint ck_durata_utilizare check(durata_utilizare<6),
+id_recolta number(3),
+data_utilizare date constraint ck_data_utilizare check(data_utilizare<to_date('31.08.2022','dd.mm.yyyy')),
+constraint fk_utilaje_recolte foreign key(id_recolta) references recolte(id_recolta)
+);
+
+insert into utilaje values(100,'omac sacmc','plug','arat',5,11,to_date('17.04.2018','dd.mm.yyyy'));
+insert into utilaje values(101,'agrotom model atl','disc','maruntit',2,11,to_date('17.04.2018','dd.mm.yyyy'));
+insert into utilaje values(102,'nardi model dora','semanatoare','semanat',3,11,to_date('18.04.2018','dd.mm.yyyy'));
+insert into utilaje values(104,'fiskars 10259','pompa stropit','udat',1.5,32,to_date('10.06.2020','dd.mm.yyyy'));
+insert into utilaje values(105,'gf-2303','plug','arat',4.5,97,to_date('30.09.2019','dd.mm.yyyy'));
+insert into utilaje values(128,'grimme se-75','masina recoltat cartofi','recoltat',3,74,to_date('16.09.2016','dd.mm.yyyy'));
+
+commit;
+
+create table producatori(
+id_producator number(3) constraint pk_producatori primary key,
+nume varchar2(20) not null,
+prenume varchar2(20) not null,
+email varchar2(50),
+id_utilaj number(3),
+id_sef number(3),
+initiale char(2),
+constraint fk_prod_utilaj foreign key(id_utilaj) references utilaje(id_utilaj),
+constraint fk_prod_sef foreign key(id_sef) references producatori(id_producator),
+constraint uq_prod_utilaj unique(id_utilaj)
+);
+
+insert into producatori values(301,'olaru','mara','olaru.mara',101,null,'om');
+insert into producatori values(308,'cretu','liliana','cretu.liliana',104,301,'cl');
+insert into producatori values(311,'iovana','florin','iovana.florin',105,301,'if');
+insert into producatori values(314,'nistor','david','nistor.david',100,311,'nd');
+insert into producatori values(313,'nicolae','daniel','nicolae.daniel',102,311,'nd');
+insert into producatori values(306,'pavel','mircea','pavel.mircea',128,308,'pm');
+
+create table lucrari_agricole(
+id_lucrare number(6) constraint pk_lucrari primary key,
+id_cultura number(5) not null,
+id_utilaj number(3) not null,
+id_producator number(3) not null,
+tip_lucrare varchar2(20) not null,
+data_lucrare date not null,
+observatii varchar2(200),
+status varchar2(12) default 'nou' not null,
+constraint ck_lucrare_status check(status in('nou','validat','anulat')),
+constraint fk_lucr_cultura foreign key(id_cultura) references culturi(id_cultura),
+constraint fk_lucr_utilaj foreign key(id_utilaj) references utilaje(id_utilaj),
+constraint fk_lucr_prod foreign key(id_producator) references producatori(id_producator)
+);
+
+create sequence seq_lucrari start with 700 increment by 1 nocache;
+
+create or replace trigger trg_lucrari
+before insert on lucrari_agricole
+for each row
+begin
+  if :new.id_lucrare is null then
+    :new.id_lucrare:=seq_lucrari.nextval;
+  end if;
+end;
+/
+
+insert into lucrari_agricole(id_cultura,id_utilaj,id_producator,tip_lucrare,data_lucrare,observatii,status)
+values(50001,100,314,'arat',to_date('05.03.2024','dd.mm.yyyy'),'arat parcela p1','nou');
+
+insert into lucrari_agricole(id_cultura,id_utilaj,id_producator,tip_lucrare,data_lucrare,observatii,status)
+values(50001,102,313,'semanat',to_date('12.03.2024','dd.mm.yyyy'),'semanat porumb','validat');
+
+insert into lucrari_agricole(id_cultura,id_utilaj,id_producator,tip_lucrare,data_lucrare,observatii,status)
+values(50003,104,308,'irigat',to_date('20.06.2024','dd.mm.yyyy'),'udare pomi','nou');
+
+insert into lucrari_agricole(id_cultura,id_utilaj,id_producator,tip_lucrare,data_lucrare,observatii,status)
+values(50004,128,306,'recoltat',to_date('18.09.2024','dd.mm.yyyy'),'recoltat cartof','validat');
+
+commit;
+
+create table magazine(
+id_magazin number(3) constraint pk_magazine primary key,
+denumire_magazin varchar2(40) not null,
+tip_magazin varchar2(12) not null,
+constraint ck_tip_magazin check(tip_magazin in('angro','retail'))
+);
+
+insert into magazine values(500,'siloz muntenia sud','angro');
+insert into magazine values(501,'moara arges','angro');
+insert into magazine values(506,'ulei press pitesti','angro');
+
+insert into magazine values(502,'piata legume-fructe pitesti','retail');
+insert into magazine values(503,'piata agro slobozia','retail');
+insert into magazine values(504,'market cartier slobozia','retail');
+
+
+create table solicitari(
+id_solicitare number(4) constraint pk_solicitari primary key,
+id_magazin number(3) not null,
+id_recolta number(3) not null,
+cantitate number(6) not null,
+pret number(6,2) not null,
+data_solicitare date default sysdate not null,
+status varchar2(12) default 'nou' not null,
+constraint ck_solic_cant check(cantitate>0),
+constraint ck_solic_pret check(pret>0),
+constraint ck_solic_status check(status in('nou','aprobata','respinsa','inchisa')),
+constraint fk_solic_mag foreign key(id_magazin) references magazine(id_magazin),
+constraint fk_solic_rec foreign key(id_recolta) references recolte(id_recolta)
+);
+
+create or replace trigger trg_solicitari_chk
+before insert or update on solicitari
+for each row
+declare
+v_tip magazine.tip_magazin%type;
+v_cat recolte.categorie_recolta%type;
+begin
+select tip_magazin into v_tip from magazine where id_magazin=:new.id_magazin;
+select categorie_recolta into v_cat from recolte where id_recolta=:new.id_recolta;
+
+if v_tip='angro' and v_cat not in('cereale','plante oleaginoase') then
+  raise_application_error(-20011,'magazin angro poate cere doar cereale/plante oleaginoase');
+end if;
+
+if v_tip='retail' and v_cat not in('fructe','legume') then
+  raise_application_error(-20012,'magazin retail poate cere doar fructe/legume');
+end if;
+end;
+/
+
+create table comenzi(
+id_comanda number(4) constraint pk_comenzi primary key,
+id_solicitare number(4) not null,
+id_magazin number(3) not null,
+id_recolta number(3) not null,
+cantitate number(6) not null,
+pret number(6,2) not null,
+data_comanda date default sysdate not null,
+status varchar2(12) default 'creata' not null,
+constraint uq_com_solic unique(id_solicitare),
+constraint ck_com_cant check(cantitate>0),
+constraint ck_com_pret check(pret>0),
+constraint ck_com_status check(status in('creata','in_livrare','finalizata','anulata')),
+constraint fk_com_solic foreign key(id_solicitare) references solicitari(id_solicitare),
+constraint fk_com_mag foreign key(id_magazin) references magazine(id_magazin),
+constraint fk_com_rec foreign key(id_recolta) references recolte(id_recolta)
+);
+
+create or replace trigger trg_comenzi_chk
+before insert or update on comenzi
+for each row
+declare
+v_tip magazine.tip_magazin%type;
+v_cat recolte.categorie_recolta%type;
+begin
+select tip_magazin into v_tip from magazine where id_magazin=:new.id_magazin;
+select categorie_recolta into v_cat from recolte where id_recolta=:new.id_recolta;
+
+if v_tip='angro' and v_cat not in('cereale','plante oleaginoase') then
+  raise_application_error(-20021,'comanda angro doar cereale/plante oleaginoase');
+end if;
+
+if v_tip='retail' and v_cat not in('fructe','legume') then
+  raise_application_error(-20022,'comanda retail doar fructe/legume');
+end if;
+end;
+/
+
+insert into solicitari values(11,501,97,150,1.5,to_date('13.09.2024','dd.mm.yyyy'),'nou');
+insert into solicitari values(12,500,11,200,1.1,to_date('12.09.2024','dd.mm.yyyy'),'aprobata');
+insert into solicitari values(13,506,62,80,2.4,to_date('14.09.2024','dd.mm.yyyy'),'nou');
+
+insert into solicitari values(21,502,14,20,7.1,to_date('11.09.2024','dd.mm.yyyy'),'nou');
+insert into solicitari values(22,503,32,30,4.6,to_date('14.09.2024','dd.mm.yyyy'),'nou');
+insert into solicitari values(23,504,74,24,5.2,to_date('10.09.2024','dd.mm.yyyy'),'nou');
+
+insert into comenzi values(1001,12,500,11,200,1.1,to_date('15.09.2024','dd.mm.yyyy'),'creata');
+insert into comenzi values(1002,21,502,14,20,7.1,to_date('15.09.2024','dd.mm.yyyy'),'creata');
+
+commit;
+
+create table livrari(
+id_livrare number(6) constraint pk_livrari primary key,
+id_comanda number(4) not null,
+cantitate_livrata number(6) not null,
+data_livrare date default sysdate not null,
+status varchar2(12) default 'trimisa' not null,
+constraint ck_livr_cant check(cantitate_livrata>0),
+constraint ck_livr_status check(status in('trimisa','receptionata','anulata')),
+constraint fk_livr_com foreign key(id_comanda) references comenzi(id_comanda)
+);
+
+create sequence seq_livrari start with 20000 increment by 1 nocache;
+
+create or replace trigger trg_livrari
+before insert on livrari
+for each row
+begin
+  if :new.id_livrare is null then :new.id_livrare:=seq_livrari.nextval; end if;
+end;
+/
+
+create or replace trigger trg_livrari_qty
+for insert or update on livrari
+compound trigger
+
+  type t_list is table of number index by pls_integer;
+  g_comenzi t_list;
+  g_cnt pls_integer := 0;
+
+  procedure add_comanda(p_id number) is
+  begin
+    if p_id is not null then
+      g_cnt := g_cnt + 1;
+      g_comenzi(g_cnt) := p_id;
+    end if;
+  end;
+
+  after each row is
+  begin
+    add_comanda(:new.id_comanda);
+    if updating and :old.id_comanda <> :new.id_comanda then
+      add_comanda(:old.id_comanda);
+    end if;
+  end after each row;
+
+  after statement is
+    v_comanda_cant number;
+    v_livrat_total number;
+  begin
+    for i in 1..g_cnt loop
+      -- evitam verificari duplicate pe acelasi id_comanda
+      if i = 1 or g_comenzi(i) <> g_comenzi(i-1) then
+        select cantitate into v_comanda_cant
+        from comenzi
+        where id_comanda = g_comenzi(i);
+
+        select nvl(sum(cantitate_livrata),0) into v_livrat_total
+        from livrari
+        where id_comanda = g_comenzi(i)
+          and status <> 'anulata';
+
+        if v_livrat_total > v_comanda_cant then
+          raise_application_error(-20031,'cantitate livrata depaseste cantitatea din comanda');
+        end if;
+      end if;
+    end loop;
+  end after statement;
+
+end trg_livrari_qty;
+/
+
+create or replace trigger trg_livrari_qty
+before insert or update on livrari
+for each row
+declare
+v_comanda_cant number;
+v_livrat_total number;
+begin
+  select cantitate into v_comanda_cant from comenzi where id_comanda=:new.id_comanda;
+
+  select nvl(sum(cantitate_livrata),0) into v_livrat_total
+  from livrari
+  where id_comanda=:new.id_comanda
+    and (:new.id_livrare is null or id_livrare<>:new.id_livrare)
+    and status<>'anulata';
+
+  if v_livrat_total + :new.cantitate_livrata > v_comanda_cant then
+    raise_application_error(-20031,'cantitate livrata depaseste cantitatea din comanda');
+  end if;
+end;
+/
+
+-- insert partial deliveries
+insert into livrari(id_comanda,cantitate_livrata,data_livrare,status)
+values(1001,120,to_date('16.09.2024','dd.mm.yyyy'),'trimisa');
+
+insert into livrari(id_comanda,cantitate_livrata,data_livrare,status)
+values(1001,80,to_date('17.09.2024','dd.mm.yyyy'),'receptionata');
+
+insert into livrari(id_comanda,cantitate_livrata,data_livrare,status)
+values(1002,20,to_date('16.09.2024','dd.mm.yyyy'),'receptionata');
+
+commit;
+
+create table facturi(
+id_factura number(6) constraint pk_facturi primary key,
+id_comanda number(4) not null,
+data_factura date default sysdate not null,
+valoare_totala number(10,2) not null,
+status varchar2(12) default 'emisa' not null,
+constraint ck_fact_val check(valoare_totala>0),
+constraint ck_fact_status check(status in('emisa','achitata','anulata')),
+constraint uq_fact_com unique(id_comanda),
+constraint fk_fact_com foreign key(id_comanda) references comenzi(id_comanda)
+);
+
+create sequence seq_facturi start with 30000 increment by 1 nocache;
+
+create or replace trigger trg_facturi
+before insert on facturi
+for each row
+begin
+  if :new.id_factura is null then :new.id_factura:=seq_facturi.nextval; end if;
+end;
+/
+
+insert into facturi(id_comanda,data_factura,valoare_totala,status)
+select c.id_comanda,to_date('18.09.2024','dd.mm.yyyy'),c.cantitate*c.pret,'emisa'
+from comenzi c
+where c.id_comanda=1001;
+
+insert into facturi(id_comanda,data_factura,valoare_totala,status)
+select c.id_comanda,to_date('18.09.2024','dd.mm.yyyy'),c.cantitate*c.pret,'emisa'
+from comenzi c
+where c.id_comanda=1002;
+
+commit;
+
+-- an invoice may have partial payments
+create table plati(
+id_plata number(6) constraint pk_plati primary key,
+id_factura number(6) not null,
+data_plata date default sysdate not null,
+suma number(10,2) not null,
+metoda varchar2(12) not null,
+constraint ck_plata_suma check(suma>0),
+constraint ck_plata_metoda check(metoda in('cash','card','transfer')),
+constraint fk_plata_fact foreign key(id_factura) references facturi(id_factura)
+);
+
+create sequence seq_plati start with 40000 increment by 1 nocache;
+
+create or replace trigger trg_plati
+before insert on plati
+for each row
+begin
+  if :new.id_plata is null then :new.id_plata:=seq_plati.nextval; end if;
+end;
+/
+
+-- trigger not to pay more than the invoice value
+create or replace trigger trg_plati_chk
+for insert on plati
+compound trigger
+
+  type t_fact is table of number index by pls_integer;
+  g_facturi t_fact;
+  g_cnt pls_integer:=0;
+
+  after each row is
+  begin
+    g_cnt:=g_cnt+1;
+    g_facturi(g_cnt):=:new.id_factura;
+  end after each row;
+
+  after statement is
+    v_total number;
+    v_platit number;
+  begin
+    for i in 1..g_cnt loop
+      select valoare_totala into v_total from facturi where id_factura=g_facturi(i);
+
+      select nvl(sum(suma),0) into v_platit
+      from plati
+      where id_factura=g_facturi(i);
+
+      if v_platit>v_total then
+        raise_application_error(-20041,'platile depasesc valoarea facturii');
+      end if;
+
+      if v_platit=v_total then
+        update facturi set status='achitata' where id_factura=g_facturi(i);
+      end if;
+    end loop;
+  end after statement;
+end trg_plati_chk;
+/
+
+insert into plati(id_factura,data_plata,suma,metoda)
+select f.id_factura,to_date('20.09.2024','dd.mm.yyyy'),100,'transfer'
+from facturi f where f.id_comanda=1001;
+
+insert into plati(id_factura,data_plata,suma,metoda)
+select f.id_factura,to_date('21.09.2024','dd.mm.yyyy'),(f.valoare_totala-100),'transfer'
+from facturi f where f.id_comanda=1001;
+
+commit;
+
+select f.id_factura,f.id_comanda,f.valoare_totala,f.status,nvl(sum(p.suma),0) total_platit
+from facturi f left join plati p on p.id_factura=f.id_factura
+group by f.id_factura,f.id_comanda,f.valoare_totala,f.status
+order by f.id_factura;
+
+commit;
+
+create table depozite(
+id_depozit number(3) constraint pk_depozite primary key,
+denumire varchar2(40) not null,
+judet varchar2(15) not null,
+localitate varchar2(30) not null,
+capacitate_kg number(10) not null,
+constraint ck_capacitate check(capacitate_kg>0)
+);
+
+insert into depozite values(1,'siloz slobozia','ialomita','slobozia',500000);
+insert into depozite values(2,'depozit pitesti','arges','pitesti',120000);
+
+commit;
+
+create table stoc_depozit(
+id_depozit number(3) not null,
+id_recolta number(3) not null,
+cantitate_kg number(10) not null,
+data_update date default sysdate not null,
+constraint pk_stoc_depozit primary key(id_depozit,id_recolta),
+constraint ck_stoc_dep_cant check(cantitate_kg>=0),
+constraint fk_stoc_dep_dep foreign key(id_depozit) references depozite(id_depozit),
+constraint fk_stoc_dep_rec foreign key(id_recolta) references recolte(id_recolta)
+);
+
+insert into stoc_depozit values(1,11,80000,to_date('01.09.2024','dd.mm.yyyy'));
+insert into stoc_depozit values(1,97,60000,to_date('01.09.2024','dd.mm.yyyy'));
+insert into stoc_depozit values(2,74,15000,to_date('01.09.2024','dd.mm.yyyy'));
+insert into stoc_depozit values(2,14,5000,to_date('01.09.2024','dd.mm.yyyy'));
+
+commit;
+
+create table stoc_magazin(
+id_magazin number(3) not null,
+id_recolta number(3) not null,
+cantitate_kg number(10) not null,
+data_update date default sysdate not null,
+constraint pk_stoc_magazin primary key(id_magazin,id_recolta),
+constraint ck_stoc_mag_cant check(cantitate_kg>=0),
+constraint fk_stoc_mag_mag foreign key(id_magazin) references magazine(id_magazin),
+constraint fk_stoc_mag_rec foreign key(id_recolta) references recolte(id_recolta)
+);
+
+insert into stoc_magazin values(500,11,20000,to_date('20.09.2024','dd.mm.yyyy'));
+insert into stoc_magazin values(501,97,15000,to_date('20.09.2024','dd.mm.yyyy'));
+insert into stoc_magazin values(502,14,300,to_date('20.09.2024','dd.mm.yyyy'));
+insert into stoc_magazin values(503,32,200,to_date('20.09.2024','dd.mm.yyyy'));
+insert into stoc_magazin values(504,74,500,to_date('20.09.2024','dd.mm.yyyy'));
+
+commit;
+
+alter table livrari add id_depozit number(3);
+alter table livrari add id_magazin number(3);
+alter table livrari add id_recolta number(3);
+
+alter trigger trg_livrari_qty disable;
+
+update livrari l
+set id_depozit=
+(
+  select case
+    when (select r.categorie_recolta
+          from comenzi c join recolte r on r.id_recolta=c.id_recolta
+          where c.id_comanda=l.id_comanda)
+         in('cereale','plante oleaginoase')
+    then 1
+    else 2
+  end
+  from dual
+);
+
+commit;
+
+alter trigger trg_livrari_qty enable;
+
+alter table livrari add constraint fk_livr_dep foreign key(id_depozit) references depozite(id_depozit);
+alter table livrari add constraint fk_livr_mag foreign key(id_magazin) references magazine(id_magazin);
+alter table livrari add constraint fk_livr_rec foreign key(id_recolta) references recolte(id_recolta);
+
+create or replace trigger trg_livrari_fill
+before insert on livrari
+for each row
+declare
+v_mag number;
+v_rec number;
+begin
+  select id_magazin,id_recolta into v_mag,v_rec from comenzi where id_comanda=:new.id_comanda;
+  :new.id_magazin:=v_mag;
+  :new.id_recolta:=v_rec;
+end;
+/
+
+alter trigger trg_livrari_qty disable;
+
+update livrari set status='trimisa' where status='receptionata';
+commit;
+
+update livrari set status='receptionata' where id_comanda in (1001,1002);
+commit;
+
+alter trigger trg_livrari_qty enable;
+
+create or replace trigger trg_comenzi_sync
+before insert or update on comenzi
+for each row
+declare
+  v_mag solicitari.id_magazin%type;
+  v_rec solicitari.id_recolta%type;
+  v_cant solicitari.cantitate%type;
+  v_pret solicitari.pret%type;
+  v_stat solicitari.status%type;
+begin
+  -- nu permitem sa schimbi solicitarea unei comenzi existente
+  if updating and :new.id_solicitare <> :old.id_solicitare then
+    raise_application_error(-20061,'nu se poate schimba id_solicitare la comanda');
+  end if;
+
+  select id_magazin,id_recolta,cantitate,pret,status
+  into v_mag,v_rec,v_cant,v_pret,v_stat
+  from solicitari
+  where id_solicitare=:new.id_solicitare;
+
+  -- optional: comanda doar din solicitare aprobata
+  if v_stat <> 'aprobata' then
+    raise_application_error(-20062,'comanda se poate crea doar din solicitare aprobata');
+  end if;
+
+  -- copiaza mereu valorile din solicitare
+  :new.id_magazin := v_mag;
+  :new.id_recolta := v_rec;
+  :new.cantitate := v_cant;
+  :new.pret := v_pret;
+end;
+/
+
+update solicitari set status='aprobata' where id_solicitare=21;
+commit;
+
+
+
+
+
