@@ -332,27 +332,6 @@ compound trigger
 end trg_livrari_qty;
 /
 
-create or replace trigger trg_livrari_qty
-before insert or update on livrari
-for each row
-declare
-v_comanda_cant number;
-v_livrat_total number;
-begin
-  select cantitate into v_comanda_cant from comenzi where id_comanda=:new.id_comanda;
-
-  select nvl(sum(cantitate_livrata),0) into v_livrat_total
-  from livrari
-  where id_comanda=:new.id_comanda
-    and (:new.id_livrare is null or id_livrare<>:new.id_livrare)
-    and status<>'anulata';
-
-  if v_livrat_total + :new.cantitate_livrata > v_comanda_cant then
-    raise_application_error(-20031,'cantitate livrata depaseste cantitatea din comanda');
-  end if;
-end;
-/
-
 -- insert partial deliveries
 insert into livrari(id_comanda,cantitate_livrata,data_livrare,status)
 values(1001,120,to_date('16.09.2024','dd.mm.yyyy'),'trimisa');
@@ -614,6 +593,7 @@ end;
 update solicitari set status='aprobata' where id_solicitare=21;
 commit;
 
+select table_name from user_tables order by table_name;
 
 
 
