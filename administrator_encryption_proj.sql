@@ -382,9 +382,154 @@ begin
 end;
 /
 
+/*
+4. Management of Database Users and Computational Resources
+b. Implementing the identity management configuration in the database
+*/
+show con_name;
 
+-- farm_manager (I,U,D,S pe ferme/parcele/recolte/culturi/utilaje/producatori etc.)
+grant delete, insert, select, update on administrator.ferme to farm_manager;
+grant delete, insert, select, update on administrator.parcele to farm_manager;
+grant delete, insert, select, update on administrator.recolte to farm_manager;
+grant delete, insert, select, update on administrator.culturi to farm_manager;
+grant delete, insert, select, update on administrator.utilaje to farm_manager;
+grant delete, insert, select, update on administrator.producatori to farm_manager;
+grant insert, select, update on administrator.lucrari_agricole to farm_manager;
 
+-- farmers: S pe parcele/recolte/culturi + I,U,S pe lucrari_agricole + I,U,S pe solicitari
+grant select on administrator.parcele to farmer_south;
+grant select on administrator.parcele to farmer_north;
+grant select on administrator.parcele to farmer_ilfov;
 
+grant select on administrator.recolte to farmer_south;
+grant select on administrator.recolte to farmer_north;
+grant select on administrator.recolte to farmer_ilfov;
+
+grant select on administrator.culturi to farmer_south;
+grant select on administrator.culturi to farmer_north;
+grant select on administrator.culturi to farmer_ilfov;
+
+grant insert, select, update on administrator.lucrari_agricole to farmer_south;
+grant insert, select, update on administrator.lucrari_agricole to farmer_north;
+grant insert, select, update on administrator.lucrari_agricole to farmer_ilfov;
+
+grant insert, select, update on administrator.solicitari to farmer_south;
+grant insert, select, update on administrator.solicitari to farmer_north;
+grant insert, select, update on administrator.solicitari to farmer_ilfov;
+
+-- sales_coordinator: S pe magazine + I,U,D,S pe solicitari + I,U,S pe comenzi + S pe livrari/facturi/plati + S pe stoc_magazin
+grant select on administrator.magazine to sales_coordinator;
+grant delete, insert, select, update on administrator.solicitari to sales_coordinator;
+grant insert, select, update on administrator.comenzi to sales_coordinator;
+grant select on administrator.livrari to sales_coordinator;
+grant select on administrator.facturi to sales_coordinator;
+grant select on administrator.plati to sales_coordinator;
+grant select on administrator.stoc_magazin to sales_coordinator;
+
+-- warehouse_operator: S pe comenzi/depozite + I,U,S pe livrari + I,U,S pe stoc_depozit
+grant select on administrator.comenzi to warehouse_operator;
+grant select on administrator.depozite to warehouse_operator;
+grant insert, select, update on administrator.livrari to warehouse_operator;
+grant insert, select, update on administrator.stoc_depozit to warehouse_operator;
+
+-- finance_officer: S pe comenzi/livrari + I,U,S pe facturi/plati
+grant select on administrator.comenzi to finance_officer;
+grant select on administrator.livrari to finance_officer;
+grant insert, select, update on administrator.facturi to finance_officer;
+grant insert, select, update on administrator.plati to finance_officer;
+
+-- plus ce mai cere matricea: farm_manager are S pe magazine/solicitari/comenzi/livrari/facturi/plati/depozite/stoc_depozit
+grant select on administrator.magazine to farm_manager;
+grant select on administrator.solicitari to farm_manager;
+grant select on administrator.comenzi to farm_manager;
+grant select on administrator.livrari to farm_manager;
+grant select on administrator.facturi to farm_manager;
+grant select on administrator.plati to farm_manager;
+grant select on administrator.depozite to farm_manager;
+grant select on administrator.stoc_depozit to farm_manager;
+
+-- test if all the grants have been given to who deserves them:
+select grantee, table_name, privilege
+from all_tab_privs
+where grantor='ADMINISTRATOR'
+and grantee in ('FARM_MANAGER','FARMER_SOUTH','FARMER_NORTH','FARMER_ILFOV','SALES_COORDINATOR','WAREHOUSE_OPERATOR','FINANCE_OFFICER')
+order by grantee, table_name, privilege;
+
+-- grant direct pe tabele => farmer_south va vedea toate randurile din tabelele pe care are select (de ex. culturi, lucrari_agricole, solicitari) => de la toti agricultorii
+-- doar cu GRANT-uri pe tabele, toți fermierii văd toate rândurile din tabelele pe care au SELECT
+-- vreau ca farmer_south să vadă doar datele lui => row-level security (VPD / Fine-Grained Access Control cu DBMS_RLS)
+create table farmer_ferma_map(
+  username varchar2(30) primary key,
+  id_ferma number(3) not null
+);
+
+insert into farmer_ferma_map values('FARMER_SOUTH',1);
+insert into farmer_ferma_map values('FARMER_NORTH',2);
+insert into farmer_ferma_map values('FARMER_ILFOV',3);
+commit;
+
+-- se creeaza view-uri filtrate a.i. fermierii sa vada doar parcelele/solicitarile/utilajele etc lor
+create or replace view v_parcele_mine as
+select p.*
+from administrator.parcele p
+join administrator.farmer_ferma_map m on m.id_ferma=p.id_ferma
+where m.username = user;
+
+-- revocare drept pe tabela in sine
+revoke select on administrator.parcele from farmer_south;
+revoke select on administrator.parcele from farmer_north;
+revoke select on administrator.parcele from farmer_ilfov;
+
+select grantee, table_name, privilege
+from all_tab_privs
+where grantor='ADMINISTRATOR'
+and grantee in ('FARMER_ILFOV')
+order by table_name, privilege;
+
+grant select on administrator.v_parcele_mine to farmer_south;
+grant select on administrator.v_parcele_mine to farmer_north;
+grant select on administrator.v_parcele_mine to farmer_ilfov;
+
+-- separare informatii parcele si culturi
+create or replace view v_parcele_mine as
+select p.*
+from parcele p
+join farmer_ferma_map m on m.id_ferma = p.id_ferma
+where m.username = user;
+
+create or replace view v_culturi_mine as
+select c.*
+from culturi c
+join parcele p on p.id_parcela = c.id_parcela
+join farmer_ferma_map m on m.id_ferma = p.id_ferma
+where m.username = user;
+
+create or replace view v_lucrari_mine as
+select l.*
+from lucrari_agricole l
+join culturi c on c.id_cultura = l.id_cultura
+join parcele p on p.id_parcela = c.id_parcela
+join farmer_ferma_map m on m.id_ferma = p.id_ferma
+where m.username = user;
+
+revoke select on culturi from farmer_south;
+revoke select on culturi from farmer_north;
+revoke select on culturi from farmer_ilfov;
+
+grant select on v_parcele_mine to farmer_south;
+grant select on v_parcele_mine to farmer_north;
+grant select on v_parcele_mine to farmer_ilfov;
+
+grant select on v_culturi_mine to farmer_south;
+grant select on v_culturi_mine to farmer_north;
+grant select on v_culturi_mine to farmer_ilfov;
+
+grant select on v_lucrari_mine to farmer_south;
+grant select on v_lucrari_mine to farmer_north;
+grant select on v_lucrari_mine to farmer_ilfov;
+
+select * from culturi;
 
 
 

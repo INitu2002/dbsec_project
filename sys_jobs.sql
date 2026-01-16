@@ -53,6 +53,67 @@ from dba_fga_audit_trail
 where object_name='PLATI'
 order by timestamp desc;
 
+-- 4 b
+create profile secure_profile limit
+failed_login_attempts 3
+password_life_time 30
+password_reuse_time 30
+password_reuse_max 3
+password_lock_time 1/24
+password_grace_time 1
+password_verify_function ora12c_verify_function;    -- minim 8 chars, 1 minusc, 1 majusc, 1 cifra, 1 special char
+
+create user farmer_south identified by Farmer_100
+profile secure_profile
+quota 50m on users;
+
+create user farmer_north identified by Farmer_200
+profile secure_profile
+quota 50m on users;
+
+create user farmer_ilfov identified by Farmer_300
+profile secure_profile
+quota 50m on users;
+
+create user sales_coordinator identified by Sales_123
+profile secure_profile quota 30m on users;
+
+create user warehouse_operator identified by Ware_123
+profile secure_profile quota 30m on users;
+
+create user finance_officer identified by Finance_123
+profile secure_profile quota 30m on users;
+
+create user farm_manager identified by FarmManager_123
+profile secure_profile quota 0 on users;
+
+grant create session to farmer_south;
+grant create session to farmer_north;
+grant create session to farmer_ilfov;
+
+grant create session to sales_coordinator;
+grant create session to warehouse_operator;
+grant create session to finance_officer;
+grant create session to farm_manager;
+
+-- mandatory passw change:
+alter user farmer_south password expire;
+alter user farmer_north password expire;
+alter user farmer_ilfov password expire;
+
+grant create view to administrator;
+
+-- adaugare consitie de maxim 2 sesiuni per user, maxim idle time 10 min;
+alter session set container=pdb2;
+alter system set resource_limit = true;
+
+alter profile secure_profile limit
+sessions_per_user 2
+idle_time 2
+connect_time 30;
+
+
+
 
 
 
