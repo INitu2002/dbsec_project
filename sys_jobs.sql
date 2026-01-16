@@ -112,7 +112,12 @@ sessions_per_user 2
 idle_time 2
 connect_time 30;
 
-
+select username,
+       count(*) as sesiuni_active
+from   v$session
+where  username is not null
+group  by username
+order  by sesiuni_active desc, username;
 
 
 
