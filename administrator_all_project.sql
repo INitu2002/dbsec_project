@@ -531,12 +531,395 @@ grant select on v_lucrari_mine to farmer_ilfov;
 
 select * from culturi;
 
+-- check all the rights on tables/views:
+select grantee, table_name, privilege
+from user_tab_privs_made
+where grantee in ('FARMER_SOUTH','FARMER_NORTH','FARMER_ILFOV','SALES_COORDINATOR','WAREHOUSE_OPERATOR','FINANCE_OFFICER')
+order by grantee, table_name, privilege;
+
+-- pachet cu 5 proceduri = procesele alese pentru entity-process matrix:
+create or replace package pkg_processes as
+  procedure submit_store_request(
+    p_id_solicitare in number,
+    p_id_magazin    in number,
+    p_id_recolta    in number,
+    p_cantitate     in number,
+    p_pret          in number,
+    p_data          in date default sysdate
+  );
+
+  procedure approve_request(
+    p_id_solicitare in number,
+    p_status        in varchar2 -- aprobata/respinsa
+  );
+
+  procedure create_order_from_request(
+    p_id_comanda    in number,
+    p_id_solicitare in number,
+    p_data          in date default sysdate
+  );
+
+  procedure record_delivery(
+    p_id_comanda    in number,
+    p_cantitate     in number,
+    p_id_depozit    in number,
+    p_status        in varchar2 default 'trimisa', -- trimisa/receptionata
+    p_data          in date default sysdate
+  );
+
+  procedure register_payment(
+    p_id_factura    in number,
+    p_suma          in number,
+    p_metoda        in varchar2, -- cash/card/transfer
+    p_data          in date default sysdate
+  );
+end pkg_processes;
+/
+
+create or replace package body pkg_processes as
+  procedure submit_store_request(
+    p_id_solicitare in number,
+    p_id_magazin    in number,
+    p_id_recolta    in number,
+    p_cantitate     in number,
+    p_pret          in number,
+    p_data          in date default sysdate
+  ) as
+  begin
+    insert into solicitari(id_solicitare,id_magazin,id_recolta,cantitate,pret,data_solicitare,status)
+    values(p_id_solicitare,p_id_magazin,p_id_recolta,p_cantitate,p_pret,p_data,'nou');
+  end;
+
+  procedure approve_request(
+    p_id_solicitare in number,
+    p_status        in varchar2
+  ) as
+  begin
+    if p_status not in ('aprobata','respinsa') then
+      raise_application_error(-20101,'status invalid (foloseste aprobata/respinsa)');
+    end if;
+
+    update solicitari
+    set status = p_status
+    where id_solicitare = p_id_solicitare;
+
+    if sql%rowcount = 0 then
+      raise_application_error(-20102,'solicitare inexistenta');
+    end if;
+  end;
+
+  procedure create_order_from_request(
+    p_id_comanda    in number,
+    p_id_solicitare in number,
+    p_data          in date default sysdate
+  ) as
+  begin
+    insert into comenzi(id_comanda,id_solicitare,id_magazin,id_recolta,cantitate,pret,data_comanda,status)
+    values(p_id_comanda,p_id_solicitare,null,null,null,null,p_data,'creata');
+  end;
+
+  procedure record_delivery(
+    p_id_comanda    in number,
+    p_cantitate     in number,
+    p_id_depozit    in number,
+    p_status        in varchar2 default 'trimisa',
+    p_data          in date default sysdate
+  ) as
+  begin
+    if p_status not in ('trimisa','receptionata','anulata') then
+      raise_application_error(-20111,'status livrare invalid');
+    end if;
+
+    insert into livrari(id_comanda,cantitate_livrata,data_livrare,status,id_depozit)
+    values(p_id_comanda,p_cantitate,p_data,p_status,p_id_depozit);
+  end;
+
+  procedure register_payment(
+    p_id_factura    in number,
+    p_suma          in number,
+    p_metoda        in varchar2,
+    p_data          in date default sysdate
+  ) as
+  begin
+    insert into plati(id_factura,data_plata,suma,metoda)
+    values(p_id_factura,p_data,p_suma,p_metoda);
+  end;
+
+end pkg_processes;
+/
+
+grant execute on pkg_processes to sales_coordinator;
+grant execute on pkg_processes to warehouse_operator;
+grant execute on pkg_processes to finance_officer;
+
+-- cerinta 5 din proiect - a)
+-- creez view safe pe stocuri pentru inventory_auditor:
+create or replace view v_stock_depozit_safe as
+select sd.id_depozit,
+       d.denumire as depozit,
+       sd.id_recolta,
+       r.denumire_recolta,
+       r.categorie_recolta,
+       sd.cantitate_kg,
+       sd.data_update
+from stoc_depozit sd
+join depozite d on d.id_depozit = sd.id_depozit
+join recolte  r on r.id_recolta = sd.id_recolta;
+
+create or replace view v_stock_magazin_safe as
+select sm.id_magazin,
+       m.denumire_magazin,
+       m.tip_magazin,
+       sm.id_recolta,
+       r.denumire_recolta,
+       r.categorie_recolta,
+       sm.cantitate_kg,
+       sm.data_update
+from stoc_magazin sm
+join magazine m on m.id_magazin = sm.id_magazin
+join recolte  r on r.id_recolta = sm.id_recolta;
+
+-- acorda catre warehouse_operator select pe view cu WITH GRANT OPTION:
+grant select on administrator.v_stock_depozit_safe to warehouse_operator with grant option;
+
+-- 5b
+-- catalog
+grant select on administrator.recolte  to r_read_catalog;
+grant select on administrator.magazine to r_read_catalog;
+
+-- farmer “mine” (row-level)
+grant select on administrator.v_parcele_mine to r_farmer_self_read;
+grant select on administrator.v_culturi_mine to r_farmer_self_read;
+grant select on administrator.v_lucrari_mine to r_farmer_self_read;
+
+-- procese (dml prin proces, nu direct)
+grant execute on administrator.pkg_processes to r_sales_exec;
+grant execute on administrator.pkg_processes to r_warehouse_exec;
+grant execute on administrator.pkg_processes to r_finance_exec;
+
+-- stergere drepturi acordate anterior, in contradictie cu ierarhia:
+revoke select on administrator.recolte from farmer_south;
+revoke select on administrator.recolte from farmer_north;
+revoke select on administrator.recolte from farmer_ilfov;
+
+revoke select on administrator.magazine from sales_coordinator;
+
+revoke select on administrator.v_stock_depozit_safe from warehouse_operator;
+
+-- cerinta suplimentara (creare rol securizat):
+grant select on administrator.stoc_depozit to r_ops_emergency;
+grant select on administrator.stoc_magazin to r_ops_emergency;
+
+-- procedura care activeaza rolul doar daca user-ul este farm_manager:
+create or replace package pkg_emergency_role as
+  procedure enable_role;
+end pkg_emergency_role;
+/
+
+create or replace package body pkg_emergency_role as
+  procedure enable_role is
+  begin
+    if user <> 'FARM_MANAGER' then
+      raise_application_error(-20901,'only farm_manager can enable emergency role');
+    end if;
+
+    if to_number(to_char(sysdate,'hh24')) not between 8 and 18 then
+      raise_application_error(-20902,'emergency role allowed only 08-18');
+    end if;
+
+    dbms_session.set_role('R_OPS_EMERGENCY');
+  end enable_role;
+end pkg_emergency_role;
+/
+
+commit;
+select object_name, status from user_objects where object_name='PKG_EMERGENCY_ROLE';
+
+grant execute on administrator.pkg_emergency_role to farm_manager;
+
+select text
+from user_source
+where name='PKG_EMERGENCY_ROLE'
+  and type='PACKAGE'
+order by line;
+
+-- 5 c):
+create or replace view v_depozite_status as
+select d.id_depozit,
+       d.denumire,
+       d.capacitate_kg,
+       nvl(sum(sd.cantitate_kg),0) total_in_stoc
+from depozite d
+left join stoc_depozit sd on sd.id_depozit=d.id_depozit
+group by d.id_depozit, d.denumire, d.capacitate_kg;
+
+-- acordare drept pe view doar pt user inventory_auditor:
+grant select on administrator.v_depozite_status to inventory_auditor;
+
+-- 5 c) demo 2:
+create role r_fm_dep;
+grant select on administrator.depozite to r_fm_dep;
+
+-- cerinta 6:
+CREATE OR REPLACE VIEW v_culturi_active AS
+SELECT c.*, r.denumire_recolta, p.denumire as nume_parcela
+FROM administrator.culturi c
+JOIN administrator.recolte r ON c.id_recolta = r.id_recolta
+JOIN administrator.parcele p ON c.id_parcela = p.id_parcela
+WHERE p.id_ferma = SYS_CONTEXT('CTX_FARM_SECURITY', 'CURRENT_FERMA_ID')
+OR SYS_CONTEXT('CTX_FARM_SECURITY', 'CURRENT_FERMA_ID') = 0; -- Admin vede tot
+
+GRANT SELECT ON v_culturi_active TO farmer_north;
+
+-- 6b) - SQL Injection:
+CREATE OR REPLACE PROCEDURE search_producatori_vuln(p_nume IN VARCHAR2) AS
+  v_sql   VARCHAR2(4000);
+  v_id_producator  NUMBER;
+  v_nume VARCHAR2(50);
+  v_prenume VARCHAR2(40);
+  v_email varchar2(40);
+  v_id_utilaj NUMBER;
+  v_id_sef NUMBER;
+  c SYS_REFCURSOR;
+BEGIN
+  v_sql := 'SELECT id_producator, nume, prenume, email, id_utilaj, id_sef FROM producatori ' ||
+           'WHERE UPPER(nume) LIKE ''%' || UPPER(p_nume) || '%''';
+  OPEN c FOR v_sql;
+  LOOP
+    FETCH c INTO v_id_producator, v_nume, v_prenume, v_email, v_id_utilaj, v_id_sef;
+    EXIT WHEN c%NOTFOUND;
+    DBMS_OUTPUT.PUT_LINE('FOUND: ' || v_id_producator || ' nume=' || v_nume || ' prenume=' || v_prenume || ' email=' || v_email || ' id_sef=' || v_id_sef || ' id_utilaj=' || v_id_utilaj);
+  END LOOP;
+  CLOSE c;
+END;
+/
+
+GRANT EXECUTE ON search_producatori_vuln TO inventory_auditor;
+
+-- patch pt UNION based SQL Injection:
+CREATE OR REPLACE PROCEDURE search_producatori_safe(p_nume IN VARCHAR2) AS
+  v_sql   VARCHAR2(4000);
+  v_id_producator  NUMBER;
+  v_nume VARCHAR2(50);
+  v_prenume VARCHAR2(40);
+  v_email VARCHAR2(40);
+  v_id_utilaj NUMBER;
+  v_id_sef NUMBER;
+  c SYS_REFCURSOR;
+BEGIN
+  v_sql := 'SELECT id_producator, nume, prenume, email, id_utilaj, id_sef
+            FROM producatori
+            WHERE UPPER(nume) LIKE :p';
+  OPEN c FOR v_sql USING '%' || UPPER(p_nume) || '%';
+  LOOP
+    FETCH c INTO v_id_producator, v_nume, v_prenume, v_email, v_id_utilaj, v_id_sef;
+    EXIT WHEN c%NOTFOUND;
+    DBMS_OUTPUT.PUT_LINE('FOUND: ' || v_id_producator ||
+                         ' nume=' || v_nume ||
+                         ' prenume=' || v_prenume ||
+                         ' email=' || v_email ||
+                         ' id_sef=' || v_id_sef ||
+                         ' id_utilaj=' || v_id_utilaj);
+  END LOOP;
+  CLOSE c;
+END;
+/
+
+GRANT EXECUTE ON search_producatori_safe TO inventory_auditor;
+
+-- cerinta 7 - data masking (1 = ca in lab):
+create table utilaje_test as select * from utilaje;
+
+CREATE OR REPLACE PACKAGE pack_utilaje AS
+  FUNCTION f_text(p_txt IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC;
+  FUNCTION f_durata(p_val IN NUMBER)  RETURN NUMBER  DETERMINISTIC;
+END pack_utilaje;
+/
+
+CREATE OR REPLACE PACKAGE BODY pack_utilaje AS
+  FUNCTION f_text(p_txt IN VARCHAR2) RETURN VARCHAR2 DETERMINISTIC IS
+    v_raw   RAW(2000);
+    v_hash  RAW(32);
+    v_hex   VARCHAR2(64);
+    v_first VARCHAR2(1);
+  BEGIN
+    IF p_txt IS NULL THEN
+      RETURN NULL;
+    END IF;
+
+    v_first := SUBSTR(TRIM(p_txt), 1, 1);
+
+    -- Hash determinist folosind DBMS_CRYPTO
+    v_raw  := UTL_RAW.cast_to_raw(UPPER(TRIM(p_txt)));
+    v_hash := DBMS_CRYPTO.hash(v_raw, DBMS_CRYPTO.hash_sh256);
+    v_hex  := RAWTOHEX(v_hash);
+
+    -- Ex: g-9F3A12BC
+    RETURN LOWER(v_first) || '-' || SUBSTR(v_hex, 1, 8);
+  END f_text;
 
 
+  FUNCTION f_durata(p_val IN NUMBER) RETURN NUMBER DETERMINISTIC IS
+    v_raw   RAW(2000);
+    v_hash  RAW(32);
+    v_hex   VARCHAR2(64);
+    v_byte  NUMBER;
+    v_base  NUMBER;
+    v_noise NUMBER;
+  BEGIN
+    IF p_val IS NULL THEN
+      RETURN NULL;
+    END IF;
 
+    -- cuantizare la 0.5
+    v_base := ROUND(p_val * 2) / 2;
 
+    -- noise determinist derivat din hash
+    v_raw  := UTL_RAW.cast_to_raw(TO_CHAR(p_val));
+    v_hash := DBMS_CRYPTO.hash(v_raw, DBMS_CRYPTO.hash_sh256);
+    v_hex  := RAWTOHEX(v_hash);
 
+    v_byte := TO_NUMBER(SUBSTR(v_hex, 1, 2), 'XX');
+    v_noise := (MOD(v_byte, 5) - 2) / 10;  -- {-0.2, -0.1, 0, 0.1, 0.2}
 
+    RETURN GREATEST(0, v_base + v_noise);
+  END f_durata;
+
+END pack_utilaje;
+/
+
+-- din utilaje_test
+SELECT id_utilaj,
+       pack_utilaje.f_text(denumire_utilaj) AS expected_denumire,
+       pack_utilaje.f_durata(durata_utilizare) AS expected_durata
+FROM utilaje_test
+ORDER BY id_utilaj;
+
+-- din utilaje_final, dupa import
+SELECT id_utilaj,
+       denumire_utilaj AS actual_denumire,
+       durata_utilizare AS actual_durata
+FROM utilaje_final
+ORDER BY id_utilaj;
+
+-- mascare nr 2:
+CREATE TABLE facturi_test AS
+SELECT * FROM facturi;
+
+BEGIN
+  DBMS_REDACT.ADD_POLICY(
+    object_schema   => 'ADMINISTRATOR',
+    object_name     => 'FACTURI_TEST',
+    column_name     => 'VALOARE_TOTALA',
+    policy_name     => 'MASK_FACTURI_VALOARE',
+    function_type   => DBMS_REDACT.RANDOM,
+    expression      => 'SYS_CONTEXT(''USERENV'',''SESSION_USER'') <> ''ADMINISTRATOR'''
+  );
+END;
+/
+
+SELECT * FROM facturi_test;
+GRANT SELECT on facturi_test TO warehouse_operator;
 
 
 
